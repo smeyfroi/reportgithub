@@ -1,0 +1,13 @@
+.build/
+.swiftpm/
+xcuserdata/
+DerivedData/
+.DS_Store
+dist/
+
+# App icon SOURCE artwork (full-size) — kept out of git by request.
+# The DERIVED icon (Assets/AppIcon.iconset, AppIcon.icns, and the app's
+# Assets.xcassets/AppIcon.appiconset) IS committed; only the source isn't.
+Assets/icon-source.png
+Assets/icon-source.jpg
+Assets/icon-source.jpeg

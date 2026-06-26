@@ -1,0 +1,52 @@
+import Foundation
+
+public enum GitHubClientError: Error, LocalizedError, Equatable {
+    case notFound(String)
+    case http(Int, String)
+    case rateLimited(retryAfter: Double?)
+    case network(String)
+    case missingCredentials
+    case invalidResponse(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .notFound(let what): return "Not found: \(what)"
+        case .http(let code, let message): return "HTTP \(code): \(message)"
+        case .rateLimited(let after):
+            return "Rate limited" + (after.map { ", retry after \(Int($0))s" } ?? "")
+        case .network(let message): return "Network error: \(message)"
+        case .missingCredentials: return "No GitHub token configured"
+        case .invalidResponse(let message): return "Invalid response: \(message)"
+        }
+    }
+}
+
+/// The read-only GitHub surface used by find-phase scripts.
+public protocol GitHubClient: Sendable {
+    func listOrgRepos(org: String) async throws -> [RepoRef]
+    /// One repository's metadata — the authoritative source for defaultBranch.
+    /// (Code-search results don't carry default_branch, so repos surfaced via
+    /// searchCode may claim "main" on a master-default repo.)
+    func getRepo(fullName: String) async throws -> RepoRef
+    /// Code search scoped to the organisation. Results are candidate evidence only.
+    func searchCode(org: String, query: String) async throws -> [RepoRef]
+    /// Returns nil when the file does not exist at that path/ref.
+    func getContent(repo: String, path: String, ref: String?) async throws -> String?
+    /// All blob paths in the repository tree at ref (default branch HEAD when
+    /// nil). Glob filtering happens host-side — GitHub has no glob endpoint.
+    func listFiles(repo: String, ref: String?) async throws -> [String]
+    /// Returns the SHA for a ref (e.g. "heads/main"), or nil if the ref does not exist.
+    func getRef(repo: String, ref: String) async throws -> String?
+    func listPRs(repo: String, head: String?, state: String) async throws -> [PullRequestRef]
+    func searchPRs(org: String, query: String) async throws -> [PullRequestRef]
+
+    // MARK: Custom properties (org-owned repos, read-only)
+
+    /// Authoritative bulk read of every org repo with its custom-property
+    /// values — the backbone for property reports (no search-index staleness).
+    func listOrgProperties(org: String) async throws -> [RepoProperties]
+    /// One repository's custom-property values (authoritative, per-repo).
+    func getProperties(repo: String) async throws -> [String: PropertyValue]
+    /// The organisation's custom-property definitions (schema + allowed values).
+    func listPropertyDefs(org: String) async throws -> [PropertyDef]
+}

@@ -1,0 +1,73 @@
+# XcodeGen spec — regenerate the Xcode project with:  xcodegen generate
+#
+# The Xcode project carries only the app shell; all engine/model code, the
+# resources (bulkgh.d.ts, TypeScript compiler, recipes), the Yams dependency,
+# and the tests live in the SwiftPM package at the repo root, consumed here as
+# a local package. `swift build` / `swift test` / CI remain the source of
+# truth; the project adds the native app-bundle workflow (run/debug in Xcode,
+# icon, Info.plist, signing).
+name: ReportGitHub
+options:
+  bundleIdPrefix: com.meyfroidt
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+packages:
+  ReportGitHubPackage:
+    path: .
+  CodeEditor:
+    url: https://github.com/ZeeZide/CodeEditor.git
+    from: 1.2.0
+  swift-markdown:
+    url: https://github.com/swiftlang/swift-markdown.git
+    from: 0.8.0
+
+fileGroups:
+  - project.yml
+  - README.md
+  - plans
+  - decisions
+
+targets:
+  ReportGitHubApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/ReportGitHub
+    dependencies:
+      - package: ReportGitHubPackage
+        product: ReportGitHubKit
+      - package: CodeEditor
+        product: CodeEditor
+      - package: swift-markdown
+        product: Markdown
+    settings:
+      base:
+        PRODUCT_NAME: ReportGitHub
+        PRODUCT_BUNDLE_IDENTIFIER: com.meyfroidt.reportgithub
+        SWIFT_VERSION: "5.0"
+        MARKETING_VERSION: 0.8.1
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: ReportGitHub
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 Steve Meyfroidt. Licensed under the GNU GPL v3."
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES
+
+schemes:
+  ReportGitHubApp:
+    build:
+      targets:
+        ReportGitHubApp: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
