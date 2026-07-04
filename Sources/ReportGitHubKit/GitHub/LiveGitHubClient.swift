@@ -181,6 +181,113 @@ public final class LiveGitHubClient: GitHubClient, @unchecked Sendable {
         return text
     }
 
+    // MARK: GraphQL (batched reads)
+
+    /// One GraphQL POST. Despite the POST verb it is a read: reportgithub's
+    /// `fetch` is a plain round-trip (no write pacer, no method branching), so
+    /// it goes straight through. GitHub buckets its own `graphql` rate-limit
+    /// pool via the response headers, so this draws on a budget SEPARATE from
+    /// the REST core quota — the whole point of batching a large scan here.
+    ///
+    /// Returns the `data` object and the (possibly empty) top-level `errors`
+    /// array. A partial failure (one bad alias) still returns `data` for the
+    /// rest with a non-fatal `errors` entry naming the failed alias, so we only
+    /// throw when there is no `data` at all (a systemic/query-level rejection).
+    private func graphQL(query: String, variables: [String: Any]) async throws
+        -> (data: [String: Any], errors: [[String: Any]]) {
+        var request = try request(path: "graphql")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["query": query, "variables": variables])
+        let (data, http) = try await fetch(request)
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data.prefix(300), encoding: .utf8) ?? ""
+            throw GitHubClientError.http(http.statusCode, body)
+        }
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GitHubClientError.invalidResponse("graphql returned a non-object response")
+        }
+        guard let dataObj = root["data"] as? [String: Any] else {
+            let message = (root["errors"] as? [[String: Any]])?.first?["message"] as? String
+            throw GitHubClientError.invalidResponse("graphql: \(message ?? "no data returned")")
+        }
+        return (dataObj, root["errors"] as? [[String: Any]] ?? [])
+    }
+
+    public func getContentBatch(_ requests: [ContentRequest]) async throws -> [BatchEntry] {
+        guard !requests.isEmpty else { return [] }
+        var results = [BatchEntry](repeating: .absent, count: requests.count)
+        // Chunk so one query stays well within GraphQL's node/complexity limits.
+        let chunkSize = 100
+        var start = 0
+        while start < requests.count {
+            let end = min(start + chunkSize, requests.count)
+            let entries = try await fetchContentChunk(Array(requests[start..<end]))
+            for (offset, entry) in entries.enumerated() { results[start + offset] = entry }
+            start = end
+        }
+        return results
+    }
+
+    /// One GraphQL query fetching a blob per `(repo, path)` in the chunk, aliased
+    /// `r0…rN`. Values pass as query variables (never string-interpolated) so
+    /// repo names and paths can't break out of the query. Returns entries aligned
+    /// to the chunk: `.content` for a fetched blob; `.absent` for a missing
+    /// repo/file or a binary blob (GraphQL returns null `text`); `.error` for a
+    /// repo GitHub could not resolve (a top-level `errors` entry names the alias)
+    /// or a malformed `owner/name`.
+    private func fetchContentChunk(_ chunk: [ContentRequest]) async throws -> [BatchEntry] {
+        var results = [BatchEntry?](repeating: nil, count: chunk.count)
+        var fields: [String] = []
+        var decls: [String] = []
+        var variables: [String: Any] = [:]
+        for (i, req) in chunk.enumerated() {
+            guard let slash = req.repo.firstIndex(of: "/") else {
+                results[i] = .error("malformed repo \"\(req.repo)\": expected \"owner/name\"")
+                continue
+            }
+            let owner = String(req.repo[..<slash])
+            let name = String(req.repo[req.repo.index(after: slash)...])
+            guard !owner.isEmpty, !name.isEmpty else {
+                results[i] = .error("malformed repo \"\(req.repo)\": expected \"owner/name\"")
+                continue
+            }
+            variables["o\(i)"] = owner
+            variables["n\(i)"] = name
+            variables["e\(i)"] = "\(req.ref ?? "HEAD"):\(req.path)"
+            decls.append("$o\(i): String!, $n\(i): String!, $e\(i): String!")
+            fields.append("r\(i): repository(owner: $o\(i), name: $n\(i)) "
+                          + "{ object(expression: $e\(i)) { ... on Blob { text } } }")
+        }
+        // Nothing valid to fetch (e.g. an all-malformed chunk): no round-trip.
+        guard !fields.isEmpty else { return results.map { $0 ?? .absent } }
+
+        let query = "query(\(decls.joined(separator: ", "))) { \(fields.joined(separator: " ")) }"
+        let (data, errors) = try await graphQL(query: query, variables: variables)
+
+        // Correlate any non-fatal errors back to their alias (path: ["r3"]) so a
+        // repo GitHub couldn't resolve surfaces as `.error`, not `.absent`.
+        var errorByAlias: [String: String] = [:]
+        for error in errors {
+            guard let path = error["path"] as? [Any], let alias = path.first as? String else { continue }
+            errorByAlias[alias] = (error["message"] as? String) ?? "GraphQL error"
+        }
+
+        for i in chunk.indices where results[i] == nil {
+            let alias = "r\(i)"
+            if let message = errorByAlias[alias] {
+                results[i] = .error(message)
+            } else if let repo = data[alias] as? [String: Any],
+                      let object = repo["object"] as? [String: Any],
+                      let text = object["text"] as? String {
+                results[i] = .content(text)
+            } else {
+                results[i] = .absent   // object null (missing file) or text null (binary)
+            }
+        }
+        return results.map { $0 ?? .absent }
+    }
+
     public func listFiles(repo: String, ref: String?) async throws -> [String] {
         // Git Trees API with recursive=1: one call for the whole tree. GitHub
         // truncates beyond ~100k entries / 7MB; acceptable for organisation

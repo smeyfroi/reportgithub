@@ -111,6 +111,30 @@ interface GitHub {
   getContent(repo: Repo | string, path: string, ref?: string): Promise<string | null>;
 
   /**
+   * Batched getContent: fetch many files in ONE request (via GraphQL, drawing
+   * on a quota pool SEPARATE from the REST budget). Pass a { repo, path } per
+   * file; resolves to an array aligned with the input. STRONGLY prefer this to
+   * a getContent-per-repo loop when scanning many repos — it turns N requests
+   * into roughly N/100, which is what keeps a large-organisation scan inside
+   * quota. Gather the (repo, path) pairs first, then make one call.
+   *
+   * Each entry reports one of three outcomes so nothing is dropped silently:
+   *   - `content` is the file text, or null when the repo/file is missing (or
+   *     the blob is binary) — treat null-with-no-error as "absent", e.g. skip.
+   *   - `error` is a message string when THAT repo's fetch failed (e.g. GitHub
+   *     could not resolve it); surface it with job.error so the run still shows
+   *     the repo failed rather than omitting it. It is null on success/absence.
+   * Per-entry isolation: one repo's error or absence never fails the batch —
+   * only a systemic failure (transport error, or no data at all) rejects.
+   *
+   * The listFiles tree walk cannot be batched (GraphQL has no recursive-tree
+   * endpoint), so keep listFiles per-repo and batch only the getContent reads.
+   */
+  getContentBatch(
+    requests: { repo: Repo | string; path: string; ref?: string }[]
+  ): Promise<{ content: string | null; error: string | null }[]>;
+
+  /**
    * File paths in the repository tree at ref (default branch HEAD when ref is
    * omitted), optionally filtered by a glob: `*` matches within one path
    * segment, `**` spans path segments (prefix a pattern with two asterisks
