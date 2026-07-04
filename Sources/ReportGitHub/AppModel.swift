@@ -126,9 +126,9 @@ final class AppModel {
                 statusLine = job.lastRunStatus ?? "Restored previous job"
             }
         }
-        userRecipes = recipeStore.load()
-        // The catalog is built from files off the main actor; on a fresh launch
-        // the golden recipe loads into the editor once it's ready.
+        // The catalog (bundled + user .ts files) is built off the main actor;
+        // legacy JSON user recipes migrate first, and on a fresh launch the
+        // golden recipe loads once the catalog is ready.
         loadRecipeCatalog(loadGoldenWhenReady: !restoredJob)
     }
 
@@ -385,36 +385,66 @@ final class AppModel {
     /// True while the initial catalog build is in flight — drives a brief
     /// "loading recipes" row so the empty library doesn't read as "no recipes".
     private(set) var recipesLoading = false
-    @ObservationIgnored private lazy var recipeLoader = RecipeCatalogLoader(service: typescript)
+    @ObservationIgnored private lazy var recipeLoader =
+        RecipeCatalogLoader(service: typescript, userDirectory: recipeStore.directory)
 
-    /// Build the bundled catalog off the main actor (transpile + meta read per
-    /// file), then publish it. On a fresh launch (no restored job) load the
-    /// golden recipe into the editor once the catalog is ready.
+    /// Monotonic token so overlapping catalog builds resolve last-issued-wins: a
+    /// fast reload (after a save/delete) must never be overwritten by a slower
+    /// build (e.g. the cold launch load) that was issued earlier.
+    @ObservationIgnored private var recipeCatalogGeneration = 0
+
+    /// Build the catalog (bundled + user files) off the main actor — migrating
+    /// legacy JSON user recipes first — then publish it. On a fresh launch (no
+    /// restored job) load the golden recipe into the editor once ready.
     private func loadRecipeCatalog(loadGoldenWhenReady: Bool) {
         recipesLoading = true
+        recipeCatalogGeneration += 1
+        let generation = recipeCatalogGeneration
         let loader = recipeLoader
+        let store = recipeStore
+        let service = typescript
         Task { [weak self] in
-            let loaded = await Task.detached(priority: .userInitiated) { loader.load() }.value
+            let loaded = await Task.detached(priority: .userInitiated) { () -> [Recipe] in
+                store.migrateLegacyJSON(using: service)   // one-time, idempotent
+                return loader.load()
+            }.value
             guard let self else { return }
-            self.recipes = loaded
             self.recipesLoading = false
+            guard self.recipeCatalogGeneration == generation else { return }
+            self.recipes = loaded
             if loadGoldenWhenReady, self.scriptText.isEmpty, !self.running, !self.generating {
                 self.loadGoldenRecipe()
             }
         }
     }
 
-    // MARK: User recipes (saved from the workspace, file-backed)
+    /// Rebuild the catalog off the main actor (mtime-cached, so only changed
+    /// files re-parse) after a save/rename/delete/import. Guarded by the
+    /// generation token so it wins over any in-flight earlier build.
+    private func reloadCatalog() {
+        recipeCatalogGeneration += 1
+        let generation = recipeCatalogGeneration
+        let loader = recipeLoader
+        Task { [weak self] in
+            let loaded = await Task.detached(priority: .userInitiated) { loader.load() }.value
+            guard let self, self.recipeCatalogGeneration == generation else { return }
+            self.recipes = loaded
+        }
+    }
+
+    // MARK: User recipes (saved/imported, .ts files in Application Support)
 
     @ObservationIgnored private let recipeStore = UserRecipeStore()
-    private(set) var userRecipes: [UserRecipe] = []
+    /// The user-defined slice of the catalog (origin == .user) — what the
+    /// sidebar's "saved" group shows and what rename/delete act on.
+    var userRecipes: [Recipe] { recipes.filter { $0.origin == .user } }
 
-    /// Drives the save-as-recipe name prompt; recipeNameDraft backs the
-    /// rename prompt too.
+    /// Drives the save-as-recipe name prompt; recipeNameDraft backs the rename
+    /// prompt too. renamingRecipe/deletingRecipe hold the user recipe acted on.
     var showSaveRecipePrompt = false
     var recipeNameDraft = ""
-    var renamingRecipe: UserRecipe?
-    var deletingRecipe: UserRecipe?
+    var renamingRecipe: Recipe?
+    var deletingRecipe: Recipe?
 
     func requestSaveRecipe() {
         guard !scriptText.isEmpty else {
@@ -426,41 +456,67 @@ final class AppModel {
     }
 
     /// Capture the current workspace — prompt, script, phase — under the
-    /// drafted name.
+    /// drafted name, as a self-describing `.ts` file.
     func saveCurrentAsRecipe() {
         let title = recipeNameDraft.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty, !scriptText.isEmpty else { return }
         do {
-            try recipeStore.save(UserRecipe(title: title, prompt: prompt,
-                                            phase: phase, source: scriptText))
-            userRecipes = recipeStore.load()
+            try recipeStore.save(title: title, prompt: prompt, source: scriptText, using: typescript)
             statusLine = "Saved recipe \"\(title)\""
+            reloadCatalog()
         } catch {
             statusLine = "Could not save recipe: \(error.localizedDescription)"
         }
     }
 
-    func renameRecipe(_ recipe: UserRecipe) {
+    func renameRecipe(_ recipe: Recipe) {
         let title = recipeNameDraft.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty, title != recipe.title else { return }
-        var renamed = recipe
-        renamed.title = title
         do {
-            try recipeStore.save(renamed)
-            userRecipes = recipeStore.load()
+            try recipeStore.rename(id: recipe.id, to: title, using: typescript)
             statusLine = "Renamed recipe to \"\(title)\""
+            reloadCatalog()
         } catch {
             statusLine = "Could not rename recipe: \(error.localizedDescription)"
         }
     }
 
-    func deleteRecipe(_ recipe: UserRecipe) {
+    func deleteRecipe(_ recipe: Recipe) {
         do {
             try recipeStore.delete(id: recipe.id)
-            userRecipes = recipeStore.load()
             statusLine = "Deleted recipe \"\(recipe.title)\""
+            reloadCatalog()
         } catch {
             statusLine = "Could not delete recipe: \(error.localizedDescription)"
+        }
+    }
+
+    /// Import an external .ts recipe: validate it (type-check) off the main
+    /// actor, then copy it into the user directory. A rejected file never
+    /// enters the catalog.
+    func importRecipe(from url: URL) {
+        let pipeline = self.pipeline
+        let store = self.recipeStore
+        Task { [weak self] in
+            do {
+                let source = try String(contentsOf: url, encoding: .utf8)
+                _ = try await Task.detached { try pipeline.validate(source: source) }.value
+                _ = try store.importRecipe(from: url)
+                self?.statusLine = "Imported \"\(url.deletingPathExtension().lastPathComponent)\""
+                self?.reloadCatalog()
+            } catch {
+                self?.statusLine = "Could not import recipe: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Export a recipe's source to a chosen file so it can be shared.
+    func exportRecipe(_ recipe: Recipe, to url: URL) {
+        do {
+            try Data(recipe.source.utf8).write(to: url, options: .atomic)
+            statusLine = "Exported \"\(recipe.title)\""
+        } catch {
+            statusLine = "Could not export recipe: \(error.localizedDescription)"
         }
     }
 
