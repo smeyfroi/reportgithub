@@ -1,7 +1,9 @@
 const meta: ScriptMeta = {
-  title: "Report custom properties across repos",
+  title: "Report repository custom properties",
   phase: "check",
   apiVersion: 1,
+  prompt: "report on the GitHub custom properties set across the organisation's repositories",
+  icon: "tag",
   params: {
     // Optional: limit to repos that set this property (blank = every repo that
     // has any custom property set).

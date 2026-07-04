@@ -1,7 +1,9 @@
 const meta: ScriptMeta = {
-  title: "Report on a CloudFormation resource's parameters",
+  title: "Report on a CloudFormation resource",
   phase: "check",
   apiVersion: 1,
+  prompt: "report on repos that define a WAF resource in cloudformation: give me the different parameters that are in use",
+  icon: "shield.lefthalf.filled",
   params: {
     glob: "**/*.template",
     resourceType: "AWS::WAFv2::WebACL",

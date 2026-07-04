@@ -1,7 +1,9 @@
 const meta: ScriptMeta = {
-  title: "Find a named object and report its properties",
+  title: "Report a named object's properties",
   phase: "check",
   apiVersion: 1,
+  prompt: "Find repos where there is a file deploy/*.template that contains a yaml object named \"*Bucket\". save the Properties/Parameters of the object.",
+  icon: "cube.box",
   params: {
     glob: "deploy/*.template",
     namePattern: "*Bucket",
