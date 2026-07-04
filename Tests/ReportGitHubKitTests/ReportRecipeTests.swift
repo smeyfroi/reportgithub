@@ -55,6 +55,11 @@ struct WafReportTests {
         #expect(outcome.auditEvents.contains {
             $0.kind == "job.reportMatch" && $0.detail.contains("fields:")
         })
+
+        // Reads go through the batched GraphQL path, not a getContent-per-repo
+        // loop: exactly one gh.getContentBatch event, and no gh.getContent.
+        #expect(outcome.auditEvents.contains { $0.kind == "gh.getContentBatch" })
+        #expect(!outcome.auditEvents.contains { $0.kind == "gh.getContent" })
     }
 
     @Test("field matrix surfaces similarities, differences, and outliers")
