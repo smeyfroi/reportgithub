@@ -27,13 +27,16 @@
 /* Begin PBXFileReference section */
 		020124AB27433986439669C3 /* ReportPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportPane.swift; sourceTree = "<group>"; };
 		0CECAEC62DBCC0756B69C7DC /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		4D2405DB327E18D96E15E6A3 /* graphql-batched-reads-strategy.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "graphql-batched-reads-strategy.md"; sourceTree = "<group>"; };
 		5267B40AA6525AEE9A3217E8 /* 0003-repository-custom-properties-as-a-host-capability.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "0003-repository-custom-properties-as-a-host-capability.md"; sourceTree = "<group>"; };
 		536400E642FA5A391382C86F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		797E0F2BED76776526240172 /* reportgithub-app-plan-v1.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "reportgithub-app-plan-v1.md"; sourceTree = "<group>"; };
 		7F7D71B1EB0D176E1635C763 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		802161F1B43B51F7D68E8141 /* reportgithub */ = {isa = PBXFileReference; lastKnownFileType = folder; name = reportgithub; path = .; sourceTree = SOURCE_ROOT; };
+		8A9D2A0C83029D59A510886C /* recipe-externalization.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "recipe-externalization.md"; sourceTree = "<group>"; };
 		97874B67AC62D65FE25D670A /* WindowSnapshotter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowSnapshotter.swift; sourceTree = "<group>"; };
 		9EC8922AEC174064F3BB09AD /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
+		B39F7B5833A925620130F3E4 /* recipe-externalization-strategy.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "recipe-externalization-strategy.md"; sourceTree = "<group>"; };
 		B7CA5C5C1420F141A2B2DADB /* 0002-merge-phase-stays-script-driven.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "0002-merge-phase-stays-script-driven.md"; sourceTree = "<group>"; };
 		BAB5F15ADA3153ECED8A272F /* ResultsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsPane.swift; sourceTree = "<group>"; };
 		C18EB94A7F574793F92A949A /* 0001-javascriptcore-as-embedded-script-runtime.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "0001-javascriptcore-as-embedded-script-runtime.md"; sourceTree = "<group>"; };
@@ -65,6 +68,9 @@
 		5272D5E6F765E67958273616 /* plans */ = {
 			isa = PBXGroup;
 			children = (
+				4D2405DB327E18D96E15E6A3 /* graphql-batched-reads-strategy.md */,
+				B39F7B5833A925620130F3E4 /* recipe-externalization-strategy.md */,
+				8A9D2A0C83029D59A510886C /* recipe-externalization.md */,
 				797E0F2BED76776526240172 /* reportgithub-app-plan-v1.md */,
 			);
 			path = plans;
@@ -377,7 +383,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.meyfroidt.reportgithub;
 				PRODUCT_NAME = ReportGitHub;
 				SDKROOT = macosx;
@@ -402,7 +408,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.meyfroidt.reportgithub;
 				PRODUCT_NAME = ReportGitHub;
 				SDKROOT = macosx;
