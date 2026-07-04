@@ -63,15 +63,9 @@ struct SupportTests {
         try store.delete(id: recipe.id)
     }
 
-    @Test("every catalog recipe resolves its source and is a check recipe")
-    func catalogConsistency() {
-        #expect(!RecipeCatalog.all.isEmpty)
-        for recipe in RecipeCatalog.all {
-            #expect(recipe.source != nil, "recipe \(recipe.id) has no bundled source")
-            #expect(recipe.phase == .check, "recipe \(recipe.id) is not a check recipe")
-            #expect(recipe.title.hasPrefix("Report"), "recipe \(recipe.id) is not a report recipe")
-        }
-    }
+    // Catalog consistency (every recipe resolves its source, is a check recipe,
+    // and has a "Report" title) now lives in RecipeCatalogLoaderTests, which
+    // builds the catalog from files rather than the deleted RecipeCatalog.all.
 
     @Test("in-memory credential store basics")
     func credentials() throws {

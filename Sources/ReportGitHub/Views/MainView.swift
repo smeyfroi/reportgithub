@@ -271,10 +271,16 @@ struct SidebarView: View {
             // Bundled and user-saved recipes share the groups — a recipe is
             // a recipe; only rename/delete (context menu) is saved-only.
             Section("Recipe library") {
+                if model.recipes.isEmpty && model.recipesLoading {
+                    Label("Loading recipes…", systemImage: "hourglass")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .selectionDisabled()
+                }
                 // ReportGitHub surfaces the read-only Find recipes; the dormant
                 // update/merge recipes stay out of the library.
                 ForEach([JobPhase.check, .report], id: \.self) { phase in
-                    let bundled = RecipeCatalog.all.filter { $0.phase == phase }
+                    let bundled = model.recipes.filter { $0.phase == phase }
                     let saved = model.userRecipes.filter { $0.phase == phase }
                     if !bundled.isEmpty || !saved.isEmpty {
                         DisclosureGroup(isExpanded: expansionBinding(for: phase)) {
